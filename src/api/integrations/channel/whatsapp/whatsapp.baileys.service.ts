@@ -3434,26 +3434,56 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async listMessage(data: SendListDto) {
-    return await this.sendMessageWithTyping(
-      data.number,
-      {
-        listMessage: {
-          title: data.title,
-          description: data.description,
-          buttonText: data?.buttonText,
-          footerText: data?.footerText,
-          sections: data.sections,
-          listType: 2,
-        },
-      },
-      {
-        delay: data?.delay,
-        presence: 'composing',
-        quoted: data?.quoted,
-        mentionsEveryOne: data?.mentionsEveryOne,
-        mentioned: data?.mentioned,
-      },
-    );
+    const buttonParamsJson = JSON.stringify({
+      title: data?.buttonText || 'Menu',
+      sections: data.sections.map((section) => ({
+        title: section.title,
+        rows: section.rows.map((row) => ({
+          header: '',
+          title: row.title,
+          description: row.description || '',
+          id: row.rowId,
+        })),
+      })),
+    });
+
+    let bodyText = data.title || '';
+    if (data?.description) {
+      bodyText += '\n\n' + data.description;
+    }
+
+    const interactiveMessage = proto.Message.InteractiveMessage.create({
+      body: proto.Message.InteractiveMessage.Body.create({ text: bodyText }),
+      footer: data?.footerText
+        ? proto.Message.InteractiveMessage.Footer.create({ text: data.footerText })
+        : undefined,
+      nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+        buttons: [
+          proto.Message.InteractiveMessage.NativeFlowMessage.NativeFlowButton.create({
+            name: 'single_select',
+            buttonParamsJson,
+          }),
+        ],
+        messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
+        messageVersion: 1,
+      }),
+    });
+
+    const message = proto.Message.create({
+      viewOnceMessage: proto.Message.FutureProofMessage.create({
+        message: proto.Message.create({
+          interactiveMessage,
+        }),
+      }),
+    });
+
+    return await this.sendMessageWithTyping(data.number, message, {
+      delay: data?.delay,
+      presence: 'composing',
+      quoted: data?.quoted,
+      mentionsEveryOne: data?.mentionsEveryOne,
+      mentioned: data?.mentioned,
+    });
   }
 
   public async contactMessage(data: SendContactDto) {
